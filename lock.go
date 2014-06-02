@@ -19,7 +19,7 @@ type Lock struct {
 // Lock locks l.
 // If the Lock is already in use, the calling
 // goroutine spins until the Lock is available.
-func (l Lock) Lock() {
+func (l *Lock) Lock() {
 	for {
 		if atomic.CompareAndSwapInt32(&l.state, 0, 1) {
 			return
@@ -35,7 +35,7 @@ func (l Lock) Lock() {
 // particular goroutine. It is allowed for one
 // goroutine to lock a Lock and then arrange for
 // another goroutine to unlock it.
-func (l Lock) Unlock() {
+func (l *Lock) Unlock() {
 	if !atomic.CompareAndSwapInt32(&l.state, 1, 0) {
 		panic("spin: unlock of unlocked Lock")
 	}
