@@ -5,6 +5,7 @@ package spin
 
 import (
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
@@ -86,6 +87,33 @@ func BenchmarkSpinlockUncontended(b *testing.B) {
 	}
 }
 
+func BenchmarkMutexUncontended(b *testing.B) {
+	type PaddedMutex struct {
+		sync.Mutex
+		pad [128]uint8
+	}
+	const CallsPerSched = 1000
+	procs := runtime.GOMAXPROCS(-1)
+	N := int32(b.N / CallsPerSched)
+	c := make(chan bool, procs)
+	for p := 0; p < procs; p++ {
+		go func() {
+			var mu PaddedMutex
+			for atomic.AddInt32(&N, -1) >= 0 {
+				runtime.Gosched()
+				for g := 0; g < CallsPerSched; g++ {
+					mu.Lock()
+					mu.Unlock()
+				}
+			}
+			c <- true
+		}()
+	}
+	for p := 0; p < procs; p++ {
+		<-c
+	}
+}
+
 func benchmarkSpinlock(b *testing.B, slack, work bool) {
 	const (
 		CallsPerSched  = 1000
@@ -98,7 +126,7 @@ func benchmarkSpinlock(b *testing.B, slack, work bool) {
 	}
 	N := int32(b.N / CallsPerSched)
 	c := make(chan bool, procs)
-	l := new(Lock)
+	var l Lock
 	for p := 0; p < procs; p++ {
 		go func() {
 			foo := 0
@@ -123,18 +151,71 @@ func benchmarkSpinlock(b *testing.B, slack, work bool) {
 	}
 }
 
+func benchmarkMutex(b *testing.B, slack, work bool) {
+	const (
+		CallsPerSched  = 1000
+		LocalWork      = 100
+		GoroutineSlack = 10
+	)
+	procs := runtime.GOMAXPROCS(-1)
+	if slack {
+		procs *= GoroutineSlack
+	}
+	N := int32(b.N / CallsPerSched)
+	c := make(chan bool, procs)
+	var mu sync.Mutex
+	for p := 0; p < procs; p++ {
+		go func() {
+			foo := 0
+			for atomic.AddInt32(&N, -1) >= 0 {
+				runtime.Gosched()
+				for g := 0; g < CallsPerSched; g++ {
+					mu.Lock()
+					mu.Unlock()
+					if work {
+						for i := 0; i < LocalWork; i++ {
+							foo *= 2
+							foo /= 2
+						}
+					}
+				}
+			}
+			c <- foo == 42
+		}()
+	}
+	for p := 0; p < procs; p++ {
+		<-c
+	}
+}
+
 func BenchmarkSpinlock(b *testing.B) {
 	benchmarkSpinlock(b, false, false)
+}
+
+func BenchmarkMutex(b *testing.B) {
+	benchmarkMutex(b, false, false)
 }
 
 func BenchmarkSpinlockSlack(b *testing.B) {
 	benchmarkSpinlock(b, true, false)
 }
 
+func BenchmarkMutexSlack(b *testing.B) {
+	benchmarkMutex(b, true, false)
+}
+
 func BenchmarkSpinlockWork(b *testing.B) {
 	benchmarkSpinlock(b, false, true)
 }
 
+func BenchmarkMutexWork(b *testing.B) {
+	benchmarkMutex(b, false, true)
+}
+
 func BenchmarkSpinlockWorkSlack(b *testing.B) {
 	benchmarkSpinlock(b, true, true)
+}
+
+func BenchmarkMutexWorkSlack(b *testing.B) {
+	benchmarkMutex(b, true, true)
 }
