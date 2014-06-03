@@ -38,10 +38,8 @@ type Lock struct {
 // If the Lock is already in use, the calling
 // goroutine spins until the Lock is available.
 func (l *Lock) Lock() {
-	for {
-		if atomic.CompareAndSwapInt32(&l.state, 0, 1) {
-			return
-		}
+	for !atomic.CompareAndSwapInt32(&l.state, 0, 1) {
+		// spin
 	}
 }
 
