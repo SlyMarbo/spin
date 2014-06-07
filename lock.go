@@ -19,6 +19,7 @@
 package spin
 
 import (
+	"runtime"
 	"sync/atomic"
 )
 
@@ -38,8 +39,12 @@ type Lock struct {
 // If the Lock is already in use, the calling
 // goroutine spins until the Lock is available.
 func (l *Lock) Lock() {
+	i := 0
 	for !atomic.CompareAndSwapInt32(&l.state, 0, 1) {
-		// spin
+		if i++; i == 1024 {
+			runtime.Gosched()
+			i = 0
+		}
 	}
 }
 
